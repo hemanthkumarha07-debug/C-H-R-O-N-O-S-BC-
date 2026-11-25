@@ -1,0 +1,22 @@
+# Python / Django
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*.sqlite3
+db.sqlite3
+staticfiles/
+.env
+.env.*
+!.env.example
+
+# Foundry / Solidity artifacts
+chronos_contracts/out/
+chronos_contracts/cache/
+chronos_contracts/broadcast/
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db

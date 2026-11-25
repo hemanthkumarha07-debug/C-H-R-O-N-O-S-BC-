@@ -1,0 +1,277 @@
+{% load static %}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>C.H.R.O.N.O.S. | Oracle-Spot Arbitrage Terminal</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;700&family=Space+Grotesk:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{% static 'chronos/css/dashboard.css' %}">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.7/dist/chart.umd.min.js" defer></script>
+    <script src="{% static 'chronos/js/dashboard.js' %}" defer></script>
+</head>
+<body id="main-body">
+    <div class="ambient-glow ambient-glow--blue" aria-hidden="true"></div>
+    <div class="ambient-glow ambient-glow--purple" aria-hidden="true"></div>
+
+    <div class="app-shell">
+        <!-- Top Command Bar -->
+        <header class="topbar glass-panel">
+            <div class="brand-block">
+                <div class="brand-emblem" aria-hidden="true">
+                    <span class="brand-ring"></span>
+                    <span class="brand-core"></span>
+                </div>
+                <div>
+                    <h1 class="brand-title">C.H.R.O.N.O.S.</h1>
+                    <p class="brand-subtitle">v2.0 // ORACLE-SPOT ARBITRAGE COMMAND CENTER</p>
+                </div>
+            </div>
+
+            <div class="topbar-actions">
+                <div class="status-cluster">
+                    <div class="status-pill" title="WebSocket stream status">
+                        <span class="dot dot--warn" id="ws-dot"></span>
+                        <span class="status-label">WS</span>
+                        <span class="status-value" id="ws-status">CONNECTING</span>
+                    </div>
+                    <div class="status-pill" title="Scanner engine state">
+                        <span class="dot dot--idle" id="engine-dot"></span>
+                        <span class="status-label">ENGINE</span>
+                        <span class="status-value" id="engine-status">STANDBY</span>
+                    </div>
+                    <div class="mode-badge" id="mode-badge">LIVE</div>
+                </div>
+
+                <div class="button-cluster">
+                    <button type="button" class="btn btn--primary" id="btn-toggle-engine">
+                        Start Scanner
+                    </button>
+                    <button type="button" class="btn btn--accent" id="btn-dry-run" title="Execute one immediate simulated flash-loan cycle">
+                        Dry-Run Strike
+                    </button>
+                </div>
+            </div>
+        </header>
+
+        <!-- Feed Health / Toast Banner -->
+        <div class="alert-banner hidden" id="alert-banner" role="status" aria-live="polite"></div>
+
+        <!-- KPI Strip -->
+        <section class="kpi-grid" aria-label="Live Telemetry">
+            <article class="glass-panel kpi-card">
+                <div class="kpi-header">
+                    <span class="kpi-label">Spot Market (BTC/USD)</span>
+                    <span class="pill pill--neutral" id="spot-source-badge">--</span>
+                </div>
+                <div class="kpi-value tabular" id="current-price">$0.00</div>
+                <div class="kpi-meta" id="spot-meta">Awaiting market tick...</div>
+            </article>
+
+            <article class="glass-panel kpi-card">
+                <div class="kpi-header">
+                    <span class="kpi-label">Chainlink Oracle (BTC/USD)</span>
+                    <span class="pill pill--purple">0xF403...E88c</span>
+                </div>
+                <div class="kpi-value tabular" id="oracle-price">$0.00</div>
+                <div class="kpi-meta" id="oracle-meta">Heartbeat age: --</div>
+            </article>
+
+            <article class="glass-panel kpi-card kpi-card--blue">
+                <div class="kpi-header">
+                    <span class="kpi-label">Oracle Drift (Delta-T)</span>
+                    <span class="pill pill--blue" id="direction-badge">NEUTRAL</span>
+                </div>
+                <div class="kpi-value kpi-value--blue tabular" id="delta-display">0.0000%</div>
+                <div class="progress-track" title="Spread proximity to strike trigger threshold">
+                    <div class="progress-fill" id="threshold-progress" style="width: 0%;"></div>
+                </div>
+                <div class="kpi-meta" id="delta-meta">Trigger threshold: 0.5000%</div>
+            </article>
+
+            <article class="glass-panel kpi-card kpi-card--green">
+                <div class="kpi-header">
+                    <span class="kpi-label">Extracted Value</span>
+                    <span class="pill pill--green">SIMULATED P&amp;L</span>
+                </div>
+                <div class="kpi-value kpi-value--green tabular" id="total-profit">$0.00</div>
+                <div class="kpi-meta" id="profit-meta">0 strikes executed · Peak spread: 0.0000%</div>
+            </article>
+        </section>
+
+        <!-- Main Analytical Workspace -->
+        <section class="workspace-grid">
+            <!-- Chart Card -->
+            <article class="glass-panel chart-card">
+                <div class="panel-header">
+                    <div>
+                        <h2 class="panel-title">High-Frequency Surveillance</h2>
+                        <p class="panel-caption" id="chart-caption">Real-time absolute spread vs. trigger threshold (last 40 ticks)</p>
+                    </div>
+                    <div class="segmented-control" role="tablist" aria-label="Chart mode">
+                        <button type="button" class="seg-btn seg-btn--active" id="tab-drift" data-chart-mode="drift" role="tab" aria-selected="true">
+                            Drift %
+                        </button>
+                        <button type="button" class="seg-btn" id="tab-prices" data-chart-mode="prices" role="tab" aria-selected="false">
+                            Spot vs Oracle
+                        </button>
+                    </div>
+                </div>
+
+                <div class="chart-stage" id="chart-stage">
+                    <canvas id="deltaChart"></canvas>
+                    <svg id="fallback-sparkline" class="fallback-svg hidden" viewBox="0 0 600 220" preserveAspectRatio="none" aria-label="Spread history sparkline"></svg>
+                </div>
+
+                <div class="chart-footer">
+                    <div class="stat-chip">
+                        <span class="stat-chip__label">Samples</span>
+                        <span class="stat-chip__val tabular" id="stat-samples">0 / 40</span>
+                    </div>
+                    <div class="stat-chip">
+                        <span class="stat-chip__label">Mean Drift</span>
+                        <span class="stat-chip__val tabular" id="stat-avg-delta">0.0000%</span>
+                    </div>
+                    <div class="stat-chip">
+                        <span class="stat-chip__label">Peak Drift</span>
+                        <span class="stat-chip__val tabular" id="stat-max-delta">0.0000%</span>
+                    </div>
+                    <div class="stat-chip">
+                        <span class="stat-chip__label">Last Tick</span>
+                        <span class="stat-chip__val tabular" id="stat-last-tick">--</span>
+                    </div>
+                </div>
+            </article>
+
+            <!-- Strategy Configuration Card -->
+            <aside class="glass-panel config-card">
+                <div class="panel-header">
+                    <div>
+                        <h2 class="panel-title">Strategy Parameters</h2>
+                        <p class="panel-caption">Synchronized with Django EngineSettings</p>
+                    </div>
+                </div>
+
+                <form id="settings-form" class="config-form">
+                    <div class="field-group">
+                        <label class="field-label" for="input-feed-mode">Feed Mode</label>
+                        <select id="input-feed-mode" class="field-input">
+                            <option value="LIVE">LIVE (Chainlink Mainnet + Binance/Coinbase)</option>
+                            <option value="SIMULATION">SIMULATION (Synthetic Volatility Feed)</option>
+                        </select>
+                    </div>
+
+                    <div class="field-row">
+                        <div class="field-group">
+                            <label class="field-label" for="input-capital">Flash Capital ($)</label>
+                            <input type="number" id="input-capital" class="field-input tabular" min="10000" max="100000000" step="10000" value="1000000">
+                        </div>
+                        <div class="field-group">
+                            <label class="field-label" for="input-threshold">Threshold (%)</label>
+                            <input type="number" id="input-threshold" class="field-input tabular" min="0.01" max="25" step="0.01" value="0.50">
+                        </div>
+                    </div>
+
+                    <div class="field-row">
+                        <div class="field-group">
+                            <label class="field-label" for="input-interval">Poll Interval (s)</label>
+                            <input type="number" id="input-interval" class="field-input tabular" min="1" max="60" step="0.5" value="3.0">
+                        </div>
+                        <div class="field-group field-group--checkbox">
+                            <label class="toggle-wrap" for="input-auto-strike">
+                                <input type="checkbox" id="input-auto-strike" checked>
+                                <span class="toggle-text">Auto-Strike Simulation</span>
+                            </label>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn--secondary btn--full" id="btn-save-config">
+                        Apply Configuration
+                    </button>
+                </form>
+
+                <div class="config-divider"></div>
+
+                <div class="utility-actions">
+                    <a href="{% url 'export_strikes_csv' %}" class="btn btn--ghost" id="btn-export-csv">
+                        Export Strikes CSV
+                    </a>
+                    <button type="button" class="btn btn--danger-ghost" id="btn-reset-history">
+                        Reset History
+                    </button>
+                </div>
+
+                <div class="contract-card">
+                    <div class="contract-card__head">
+                        <span class="contract-card__title">ChronosReaper.sol</span>
+                        <span class="pill pill--amber">DRY-RUN SAFE</span>
+                    </div>
+                    <p class="contract-card__desc">
+                        Aave V3 <code>flashLoanSimple</code> receiver with dual-router atomic swap, <code>POOL</code> &amp; <code>initiator</code> callback verification, <code>SafeERC20</code>, and 2-step ownership.
+                    </p>
+                </div>
+            </aside>
+        </section>
+
+        <!-- Bottom Operational Dock -->
+        <section class="dock-grid">
+            <!-- Strike Execution Ledger -->
+            <article class="glass-panel ledger-card">
+                <div class="panel-header">
+                    <div>
+                        <h2 class="panel-title">Strike Execution Ledger</h2>
+                        <p class="panel-caption">Persisted arbitrage evaluations with fee &amp; gas breakdown</p>
+                    </div>
+                    <span class="pill pill--neutral tabular" id="ledger-count">0 entries</span>
+                </div>
+
+                <div class="table-wrap">
+                    <table class="ledger-table">
+                        <thead>
+                            <tr>
+                                <th>Time</th>
+                                <th>Mode</th>
+                                <th>Direction</th>
+                                <th class="num">Drift</th>
+                                <th class="num">Capital</th>
+                                <th class="num">Fees + Gas</th>
+                                <th class="num">Net Profit</th>
+                            </tr>
+                        </thead>
+                        <tbody id="strike-ledger-body">
+                            <tr class="empty-row">
+                                <td colspan="7">No strikes recorded yet. Start the scanner or click Dry-Run Strike.</td>
+                            </tr>
+                        </tbody>
+                    </table>
+                </div>
+            </article>
+
+            <!-- Reaper Engine Logs -->
+            <article class="glass-panel terminal-card">
+                <div class="panel-header">
+                    <div>
+                        <h2 class="panel-title">Reaper Engine Logs</h2>
+                        <p class="panel-caption">Bounded live telemetry stream</p>
+                    </div>
+                    <div class="terminal-tools">
+                        <select id="log-filter" class="filter-select" aria-label="Filter log lines">
+                            <option value="ALL">All</option>
+                            <option value="STRIKE">Strikes</option>
+                            <option value="WARN">Warnings</option>
+                        </select>
+                        <button type="button" class="btn-mini" id="btn-clear-logs">Clear</button>
+                    </div>
+                </div>
+
+                <div id="terminal-output" class="terminal-output" role="log" aria-live="polite">
+                    <div class="log-line log-line--info">&gt; C.H.R.O.N.O.S. Command Center initialized.</div>
+                    <div class="log-line log-line--muted">&gt; Hydrating state and opening WebSocket channel...</div>
+                </div>
+            </article>
+        </section>
+    </div>
+</body>
+</html>
